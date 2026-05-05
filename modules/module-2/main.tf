@@ -2,13 +2,14 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 3.27"
+      version = "~> 5.0"
     }
   }
 }
 
 provider "aws" {
   region = "us-east-1"
+  # AWS_PROFILE environment variable must be set in your terminal
 }
 
 data "aws_caller_identity" "current" {}
@@ -357,7 +358,7 @@ resource "aws_launch_template" "ecs_launch_template" {
   }
 
   vpc_security_group_ids = [aws_security_group.ecs_sg.id]
-  user_data              = base64encode(data.template_file.user_data.rendered)
+  user_data              = base64encode(file("${path.module}/resources/ecs/user_data.tpl"))
 }
 
 resource "aws_autoscaling_group" "ecs_asg" {
@@ -382,12 +383,17 @@ resource "aws_ecs_cluster" "cluster" {
   }
 }
 
-data "template_file" "user_data" {
-  template = file("${path.module}/resources/ecs/user_data.tpl")
+locals {
+  rds_endpoint_without_port = replace(aws_db_instance.database-instance.endpoint, ":3306", "")
+  task_definition_rendered = replace(
+    file("${path.module}/resources/ecs/task_definition.json"),
+    "RDS_ENDPOINT_VALUE",
+    local.rds_endpoint_without_port
+  )
 }
 
 resource "aws_ecs_task_definition" "task_definition" {
-  container_definitions    = data.template_file.task_definition_json.rendered
+  container_definitions    = local.task_definition_rendered
   family                   = "ECS-Lab-Task-definition"
   network_mode             = "bridge"
   memory                   = "512"
@@ -404,12 +410,9 @@ resource "aws_ecs_task_definition" "task_definition" {
     name      = "kernels"
     host_path = "/usr/src/kernels"
   }
-}
 
-data "template_file" "task_definition_json" {
-  template = file("${path.module}/resources/ecs/task_definition.json")
   depends_on = [
-    null_resource.rds_endpoint
+    aws_db_instance.database-instance
   ]
 }
 
@@ -481,35 +484,8 @@ resource "aws_secretsmanager_secret_version" "secret_version" {
 EOF
 }
 
-resource "null_resource" "rds_endpoint" {
-  provisioner "local-exec" {
-    command     = <<EOF
-RDS_URL="${aws_db_instance.database-instance.endpoint}"
-RDS_URL=$${RDS_URL::-5}
-sed -i "s,RDS_ENDPOINT_VALUE,$RDS_URL,g" ${path.module}/resources/ecs/task_definition.json
-EOF
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  depends_on = [
-    aws_db_instance.database-instance
-  ]
-}
-
-resource "null_resource" "cleanup" {
-  provisioner "local-exec" {
-    command     = <<EOF
-RDS_URL="${aws_db_instance.database-instance.endpoint}"
-RDS_URL=$${RDS_URL::-5}
-sed -i "s,$RDS_URL,RDS_ENDPOINT_VALUE,g" ${path.module}/resources/ecs/task_definition.json
-EOF
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  depends_on = [
-    null_resource.rds_endpoint, aws_ecs_task_definition.task_definition
-  ]
-}
+# RDS endpoint replacement is now handled natively via locals block
+# No need for null_resource provisioners that modify files
 
 
 /* Creating a S3 Bucket for Terraform state file upload. */

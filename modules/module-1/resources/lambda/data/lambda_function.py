@@ -470,7 +470,7 @@ def lambda_handler(event, context):
             return generateResponse(200, json.dumps({"body": responses}))
 
         elif event["path"] == "/save-content":
-            bucket = "replace-bucket-name"
+            bucket = "production-blog-awsgoat-bucket-051022872926"
             if event["httpMethod"] == "POST":
                 img_data = json.loads(event["body"])["value"]
                 # print(img_data)

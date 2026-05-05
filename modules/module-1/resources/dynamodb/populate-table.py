@@ -3,8 +3,16 @@ import json
 import time
 import os
 
-session=boto3.Session(aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'], aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'])
-dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
+# Use AWS profile credentials if available, otherwise fall back to environment variables
+if 'AWS_ACCESS_KEY_ID' in os.environ and 'AWS_SECRET_ACCESS_KEY' in os.environ:
+    session = boto3.Session(
+        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY']
+    )
+    dynamodb = session.resource('dynamodb', region_name='us-east-1')
+else:
+    # Use default credential chain (includes AWS SSO, instance profile, etc.)
+    dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 time.sleep(5)
 table_1 = dynamodb.Table('blog-users')
