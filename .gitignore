@@ -13,3 +13,4 @@
 *.lic
 tf.plan
 venv
+.DS_Store
